@@ -51,7 +51,7 @@ def chunked_forwarding(net, mono, view):
     return binaural
 
 
-def predict(input_file_wav_path, input_positions_filepath):
+def predict(input_file_wav_path, input_positions_filepath, cuda):
 
     model_filepath = "model/binaural_network_1block.net"
     output_dirpath = "outputs/"
@@ -74,7 +74,8 @@ def predict(input_file_wav_path, input_positions_filepath):
                           warpnet_channels=64,
                           wavenet_blocks=num_blocks,
                           layers_per_block=10,
-                          wavenet_channels=64
+                          wavenet_channels=64,
+                          use_cuda=False
                           )
     net.load_from_file(model_filepath)
 
@@ -101,4 +102,4 @@ if __name__ == '__main__':
     input_filepath = "inputs/mono.wav"
     input_position_filepath = "inputs/rx_positions.txt"
 
-    predict(input_filepath, input_position_filepath)
+    predict(input_filepath, input_position_filepath, cuda=False)
