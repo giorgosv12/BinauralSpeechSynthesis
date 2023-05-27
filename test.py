@@ -97,9 +97,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--cuda", "-c",
-                        type=bool,
-                        default=False,
+    parser.add_argument('--cuda', action=argparse.BooleanOptionalAction,
                         help="path to the test data")
 
     parser.add_argument("--model", "-m",
