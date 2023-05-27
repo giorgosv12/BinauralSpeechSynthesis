@@ -1,20 +1,13 @@
-"""
-Copyright (c) Facebook, Inc. and its affiliates.
-All rights reserved.
-
-This source code is licensed under the license found in the
-LICENSE file in the root directory of this source tree.
-"""
-
+import argparse
 import os
 import numpy as np
 import torch as th
 import torchaudio as ta
+from time import time
 
 from src.models import BinauralNetwork
 
-
-def chunked_forwarding(net, mono, view):
+def chunked_forwarding(net, mono, view, cuda):
     '''
     binauralized the mono input given the view
     :param net: binauralization network
@@ -22,8 +15,12 @@ def chunked_forwarding(net, mono, view):
     :param view: 7 x K tensor containing the view as 3D positions and quaternions for orientation (K = T / 400)
     :return: 2 x T tensor containing binauralized audio signal
     '''
-    net.eval()
-    # mono, view = mono.cuda(), view.cuda()
+
+    if cuda:
+        net.eval().cuda()
+        mono, view = mono.cuda(), view.cuda()
+    else:
+        net.eval()
 
     chunk_size = 480000  # forward in chunks of 10s
     rec_field = net.receptive_field() + 1000  # add 1000 samples as "safe bet" since warping has undefined rec. field
@@ -51,9 +48,8 @@ def chunked_forwarding(net, mono, view):
     return binaural
 
 
-def predict(input_file_wav_path, input_positions_filepath, cuda):
+def predict(input_file_wav_path, input_positions_filepath, cuda, model_filepath):
 
-    model_filepath = "model/binaural_network_1block.net"
     output_dirpath = "outputs/"
 
     if "1" in model_filepath:
@@ -65,9 +61,6 @@ def predict(input_file_wav_path, input_positions_filepath, cuda):
 
     os.makedirs(output_dirpath, exist_ok=True)
 
-    # binauralized and evaluate test sequence for the eight subjects and the validation sequence
-    test_sequences = [f"subject{i+1}" for i in range(8)] + ["validation_sequence"]
-
     # initialize network
     net = BinauralNetwork(view_dim=7,
                           warpnet_layers=4,
@@ -75,8 +68,9 @@ def predict(input_file_wav_path, input_positions_filepath, cuda):
                           wavenet_blocks=num_blocks,
                           layers_per_block=10,
                           wavenet_channels=64,
-                          use_cuda=False
+                          use_cuda=cuda
                           )
+
     net.load_from_file(model_filepath)
 
     # load mono input and view conditioning
@@ -90,16 +84,41 @@ def predict(input_file_wav_path, input_positions_filepath, cuda):
     if not view.shape[-1] * 400 == mono.shape[-1]:
         raise Exception(f"mono signal is expected to have 400x the length of the position/orientation sequence.")
 
-    output_filename = "{}_binaural.wav".format(os.path.split(input_file_wav_path)[0])
+    output_filename = "{}_binaural.wav".format(os.path.split(input_file_wav_path)[-1].split(".")[0])
 
     # binauralize and save output
-    binaural = chunked_forwarding(net, mono, view)
+    binaural = chunked_forwarding(net, mono, view, cuda)
     ta.save(os.path.join(output_dirpath, output_filename), binaural, sr)
 
 
 if __name__ == '__main__':
 
-    input_filepath = "inputs/mono.wav"
-    input_position_filepath = "inputs/rx_positions.txt"
+    start_time = time()
 
-    predict(input_filepath, input_position_filepath, cuda=False)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--cuda", "-c",
+                        type=bool,
+                        default=False,
+                        help="path to the test data")
+
+    parser.add_argument("--model", "-m",
+                        type=str,
+                        default="model/binaural_network_1block.net",
+                        help="path to the saved model")
+
+    parser.add_argument("--file", "-f",
+                        type=str,
+                        required=True,
+                        help="path to the mono .wav file")
+
+    parser.add_argument("--positions", "-p",
+                        type=str,
+                        required=True,
+                        help="path to the positions file")
+
+    args = parser.parse_args()
+
+    predict(args.file, args.positions, cuda=args.cuda, model_filepath=args.model)
+
+    print("Execution Time (s): {}".format(time() - start_time))
